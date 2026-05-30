@@ -1,4 +1,80 @@
-secrets:
+services:
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/src:/app/src:ro
+    environment:
+      - ENV=development
+      - OLLAMA_SERVER=${OLLAMA_SERVER}
+      - BACKEND_SERVER=${BACKEND_SERVER}
+      - FRONTEND_SERVER=${FRONTEND_SERVER}
+      - VALKEY_HOST=valkey
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Production Frontend (Default)
   frontend:
-  ollama:
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+      target: prod
+    depends_on:
+      - valkey
+    ports:
+      - "3000:3000"
+    volumes:
+      - /app/node_modules
+      - /app/.svelte-kit
+      - /app/build
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_SERVER=${OLLAMA_SERVER}
+      - BACKEND_SERVER=${BACKEND_SERVER}
+      - FRONTEND_SERVER=${FRONTEND_SERVER}
+      - VALKEY_HOST=valkey
+    stdin_open: true
+    tty: true
+
+  # Development Frontend (Run with --profile dev)
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+      target: dev
+    depends_on:
+      - valkey
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.svelte-kit
+    environment:
+      - NODE_ENV=development
+      - OLLAMA_SERVER=${OLLAMA_SERVER}
+      - BACKEND_SERVER=${BACKEND_SERVER}
+      - FRONTEND_SERVER=${FRONTEND_SERVER}
+      - VALKEY_HOST=valkey
+    stdin_open: true
+    tty: true
